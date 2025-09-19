@@ -1,0 +1,25 @@
+version: "3.9"
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"              # expose LLM API to host and other containers
+    volumes:
+      - ollama_models:/root/.ollama
+
+  app:
+    build: ./app
+    container_name: plushy-app
+    stdin_open: true   # <— keeps STDIN open
+    tty: true          # <— allocates a terminal
+    depends_on:
+      - ollama
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    volumes:
+      - ./app:/usr/src/app         # live code mount for dev
+
+volumes:
+  ollama_models:
