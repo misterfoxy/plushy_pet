@@ -8,6 +8,8 @@ services:
       - "11434:11434"              # expose LLM API to host and other containers
     volumes:
       - ollama_models:/root/.ollama
+      - ./Ollama:/models   # <— mount your local ollama/ folder into container
+
 
   app:
     build: ./app

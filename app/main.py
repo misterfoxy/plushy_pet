@@ -5,7 +5,7 @@ import requests
 # If you're running Python inside docker-compose, keep this.
 # If you're running Python on your Mac, change to "http://localhost:11434"
 OLLAMA_HOST = "http://ollama:11434"
-MODEL_NAME = "llama2"  # or "phi" if that's the one you pulled
+MODEL_NAME = "plushy-pet"
 
 def query_model(prompt: str):
     """Send a prompt to the LLM running in Ollama and stream the response."""
