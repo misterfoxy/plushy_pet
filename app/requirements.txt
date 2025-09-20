@@ -2,3 +2,6 @@ requests
 pyttsx3
 SpeechRecognition
 openai-whisper
+pyaudio
+soundfile
+sounddevice
