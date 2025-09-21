@@ -1,4 +1,5 @@
 import os
+import json
 import tempfile
 import requests
 import pyttsx3
@@ -16,31 +17,26 @@ tts_engine.setProperty("rate", 170)
 tts_engine.setProperty("volume", 1.0)
 
 # --- Whisper setup (offline) ---
-whisper_model = whisper.load_model("base")  # can use "tiny", "small", "medium", "large"
+whisper_model = whisper.load_model("base")  # "tiny", "small", "medium", "large"
 
 def speak(text: str):
-    """Convert text to speech."""
+    """Convert text to speech (blocking)."""
     if not text or not text.strip():
-        print("⚠️ Nothing to speak.")
         return
-    try:
-        clean_text = text.replace("\n", " ").replace("\r", " ").strip()
-        print(f"🔊 Speaking: {clean_text}")  # debug log
-        tts_engine.say(clean_text)
-        tts_engine.runAndWait()
-    except Exception as e:
-        print(f"❌ TTS error: {e}")
+    clean_text = " ".join(text.split())
+    print(f"🔊 Speaking chunk: {clean_text}")
+    tts_engine.say(clean_text)
+    tts_engine.runAndWait()
 
 def record_audio(filename: str, duration: int = 5, samplerate: int = 16000):
     """Record audio from microphone and save to a WAV file."""
     print("🎤 Recording... (speak now)")
     audio_data = sd.rec(int(duration * samplerate), samplerate=samplerate, channels=1, dtype=np.int16)
-    sd.wait()  # wait until recording finishes
+    sd.wait()
     print("✅ Recording complete")
-
     with wave.open(filename, "wb") as wf:
         wf.setnchannels(1)
-        wf.setsampwidth(2)  # 16-bit
+        wf.setsampwidth(2)
         wf.setframerate(samplerate)
         wf.writeframes(audio_data.tobytes())
 
@@ -51,29 +47,36 @@ def transcribe_audio(filename: str) -> str:
     print(f"You (voice): {text}")
     return text
 
-
-def query_model(prompt: str) -> str:
-    """Send prompt to Ollama and get response."""
+def stream_query_model(prompt: str):
+    """Stream response from Ollama and speak in chunks."""
     url = f"{OLLAMA_HOST}/api/generate"
-    payload = {"model": MODEL_NAME, "prompt": prompt}
+    payload = {"model": MODEL_NAME, "prompt": prompt, "stream": True}
     response = requests.post(url, json=payload, stream=True)
 
-    output = ""
+    buffer = ""
     for line in response.iter_lines():
-        if line:
-            try:
-                data = line.decode("utf-8")
-                if '"response":"' in data:
-                    part = data.split('"response":"')[1].split('"')[0]
-                    output += part
-            except Exception as e:
-                print(f"⚠️ Parse error: {e}")
-                continue
+        if not line:
+            continue
+        try:
+            data = json.loads(line.decode("utf-8"))
+        except json.JSONDecodeError:
+            continue
 
-    output = output.strip()
-    print(f"🤖 Pet (raw): {output}")  # debug log
-    return output
+        if "response" in data:
+            buffer += data["response"]
+            print(data["response"], end="", flush=True)
 
+            # speak in chunks when we hit punctuation or long buffer
+            if any(p in buffer for p in [".", "!", "?", "\n"]) or len(buffer) > 80:
+                speak(buffer)
+                buffer = ""
+
+        if data.get("done", False):
+            break
+
+    if buffer.strip():
+        speak(buffer)  # speak whatever remains
+    print()  # newline after streaming
 
 def listen_for_input() -> str:
     """Push-to-talk input: record mic, transcribe with Whisper, or fallback to typing."""
@@ -84,30 +87,26 @@ def listen_for_input() -> str:
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmpfile:
         record_audio(tmpfile.name, duration=5)
         text = transcribe_audio(tmpfile.name)
-        os.unlink(tmpfile.name)  # cleanup temp file
+        os.unlink(tmpfile.name)
         return text
 
 def main():
     print("🐶 Plushy Pet is ready! Say 'quit' or 'exit' to stop.")
-    speak("Hello! I'm your plushy pet. Let's talk!")
+    speak("Hello there! Let's talk.")
 
     while True:
         user_input = listen_for_input()
         if not user_input:
             continue
-
         if user_input.lower() in ["quit", "exit"]:
-            print("Goodbye 👋")
             speak("Goodbye")
+            print("Goodbye 👋")
             break
-
-        reply = query_model(user_input)
-        print(f"Pet: {reply}")
-        speak(reply)
+        print("Pet: ", end="", flush=True)
+        stream_query_model(user_input)
 
 if __name__ == "__main__":
     main()
-
 
 
 
