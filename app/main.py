@@ -11,13 +11,10 @@ import wave
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 MODEL_NAME = "plushy-pet"
 
-# --- Text-to-Speech setup ---
+# ------------------ TTS Setup ------------------
 tts_engine = pyttsx3.init()
 tts_engine.setProperty("rate", 170)
 tts_engine.setProperty("volume", 1.0)
-
-# --- Whisper setup (offline) ---
-whisper_model = whisper.load_model("base")  # "tiny", "small", "medium", "large"
 
 def speak(text: str):
     """Convert text to speech (blocking)."""
@@ -27,6 +24,9 @@ def speak(text: str):
     print(f"🔊 Speaking chunk: {clean_text}")
     tts_engine.say(clean_text)
     tts_engine.runAndWait()
+
+# ------------------ Whisper Setup ------------------
+whisper_model = whisper.load_model("base")  # "tiny", "small", "medium", "large"
 
 def record_audio(filename: str, duration: int = 5, samplerate: int = 16000):
     """Record audio from microphone and save to a WAV file."""
@@ -47,6 +47,7 @@ def transcribe_audio(filename: str) -> str:
     print(f"You (voice): {text}")
     return text
 
+# ------------------ Ollama API ------------------
 def stream_query_model(prompt: str):
     """Stream response from Ollama and speak in chunks."""
     url = f"{OLLAMA_HOST}/api/generate"
@@ -78,6 +79,7 @@ def stream_query_model(prompt: str):
         speak(buffer)  # speak whatever remains
     print()  # newline after streaming
 
+# ------------------ Input ------------------
 def listen_for_input() -> str:
     """Push-to-talk input: record mic, transcribe with Whisper, or fallback to typing."""
     choice = input("\n🎙️ Press ENTER to talk, or type a message: ")
@@ -90,9 +92,46 @@ def listen_for_input() -> str:
         os.unlink(tmpfile.name)
         return text
 
+# ------------------ Onboarding ------------------
+def run_onboarding():
+    print("🐶 Welcome to Plushy Pet!")
+    
+    user_age = input("👦👧 How old are you? ")
+    user_interests = input("🌟 What are your favorite sports or hobbies? ")
+    user_media_preferences = input("🌟 What are your favorite books, movies, or shows? ")
+    pet_name = input("✨ What would you like to name your pet? ")
+    pet_personality = input(
+        "💡 Describe your pet's personality (e.g., playful, sleepy, mischievous): "
+    )
+    
+    onboarding_data = {
+        "pet_name": pet_name.strip() or "Plushy",
+        "pet_personality": pet_personality.strip() or "friendly and playful",
+        "user_age": user_age.strip() or "10",
+        "user_interests": user_interests.strip() or "reading and soccer",
+        "user_media_preferences": user_media_preferences.strip() or "Harry Potter and Pixar movies"
+    }
+    
+    print(f"\n✅ Great! Your pet {onboarding_data['pet_name']} is {onboarding_data['pet_personality']}.\n")
+    speak(f"Hi! I'm {onboarding_data['pet_name']}! I'm feeling very {onboarding_data['pet_personality']} today.")
+    return onboarding_data
+
+def generate_prompt(user_input, onboarding_data):
+    """Build a custom prompt for the LLM using onboarding data."""
+    pet_name = onboarding_data.get("pet_name", "Plushy")
+    personality = onboarding_data.get("pet_personality", "default")
+    return (
+        f"You are {pet_name}, a {personality} plushy pet. "
+        f"The user is a {onboarding_data.get('user_age', '10')}-year-old who likes {onboarding_data.get('user_interests', 'reading and soccer')} and {onboarding_data.get('user_media_preferences', 'reading and soccer')} "
+        f"Respond to the user naturally, in-character, and with warmth.\n\n"
+        f"User: {user_input}\n{pet_name}: "
+        
+    )
+
+# ------------------ Main ------------------
 def main():
-    print("🐶 Plushy Pet is ready! Say 'quit' or 'exit' to stop.")
-    speak("Hello there! Let's talk.")
+    onboarding_data = run_onboarding()
+    print("Say 'quit' or 'exit' to stop.\n")
 
     while True:
         user_input = listen_for_input()
@@ -102,164 +141,11 @@ def main():
             speak("Goodbye")
             print("Goodbye 👋")
             break
-        print("Pet: ", end="", flush=True)
-        stream_query_model(user_input)
+        print(f"{onboarding_data['pet_name']}: ", end="", flush=True)
+
+        prompt = generate_prompt(user_input, onboarding_data)
+        stream_query_model(prompt)
 
 if __name__ == "__main__":
     main()
 
-
-
-# import os
-# import json
-# import requests
-# import pyttsx3
-# import speech_recognition as sr
-
-# OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-# MODEL_NAME = "plushy-pet"
-
-# # --- Text-to-Speech engine setup ---
-# tts_engine = pyttsx3.init()
-# tts_engine.setProperty("rate", 170)
-# tts_engine.setProperty("volume", 1.0)
-
-# def speak(text: str):
-#     """Convert text to spoken audio."""
-#     tts_engine.say(text)
-#     tts_engine.runAndWait()
-
-# def query_model(prompt: str) -> str:
-#     """Send a prompt to the LLM running in Ollama and return the response text."""
-#     url = f"{OLLAMA_HOST}/api/generate"
-#     payload = {"model": MODEL_NAME, "prompt": prompt}
-#     response = requests.post(url, json=payload, stream=True)
-
-#     output = ""
-#     for line in response.iter_lines():
-#         if line:
-#             data = line.decode("utf-8")
-#             if '"response":"' in data:
-#                 part = data.split('"response":"')[1].split('"')[0]
-#                 output += part
-#     return output.strip()
-
-# def listen_for_input() -> str:
-#     """Capture voice input and return transcribed text using Whisper (offline)."""
-#     recognizer = sr.Recognizer()
-
-#     try:
-#         with sr.Microphone() as source:
-#             print("\n🎤 Listening... (say something or type 'quit' to exit)")
-#             recognizer.adjust_for_ambient_noise(source)
-#             audio = recognizer.listen(source)
-
-#         # Use Whisper model locally (choose: tiny, base, small, medium, large)
-#         text = recognizer.recognize_whisper(audio, model="base")
-#         print(f"You (voice): {text}")
-#         return text
-#     except OSError:
-#         # No mic detected, fallback to typing
-#         return input("\nYou (typed): ")
-#     except sr.UnknownValueError:
-#         print("❌ Sorry, I couldn't understand that. Try again.")
-#         return ""
-#     except Exception as e:
-#         print(f"⚠️ Whisper error: {e}, falling back to typing.")
-#         return input("\nYou (typed): ")
-
-# def main():
-#     print("🐶 Plushy Pet is ready! Say 'quit' or 'exit' to stop.")
-
-#     while True:
-#         user_input = listen_for_input()
-#         if not user_input:
-#             continue
-
-#         if user_input.lower() in ["quit", "exit"]:
-#             print("Goodbye 👋")
-#             speak("Goodbye")
-#             break
-
-#         reply = query_model(user_input)
-#         print(f"Pet: {reply}")
-#         speak(reply)
-
-# if __name__ == "__main__":
-#     main()
-
-# # # --- Text-to-Speech engine setup ---
-# # tts_engine = pyttsx3.init()
-# # tts_engine.setProperty("rate", 170)   # speaking speed (default ~200)
-# # tts_engine.setProperty("volume", 1.0) # 0.0 to 1.0
-
-# # def speak(text: str):
-# #     """Convert text to spoken audio."""
-# #     tts_engine.say(text)
-# #     tts_engine.runAndWait()
-
-# # def query_model(prompt: str) -> str:
-# #     """Send a prompt to the LLM running in Ollama and return the response text."""
-# #     url = f"{OLLAMA_HOST}/api/generate"
-# #     payload = {"model": MODEL_NAME, "prompt": prompt}
-# #     response = requests.post(url, json=payload, stream=True)
-
-# #     output = ""
-# #     for line in response.iter_lines():
-# #         if line:
-# #             data = line.decode("utf-8")
-# #             if '"response":"' in data:
-# #                 part = data.split('"response":"')[1].split('"')[0]
-# #                 output += part
-# #     return output.strip()
-
-# # def main():
-# #     print("🐶 Plushy Pet is ready! Type 'quit' to exit.")
-# #     while True:
-# #         user_input = input("\nYou: ")
-# #         if user_input.lower() in ["quit", "exit"]:
-# #             print("Goodbye 👋")
-# #             speak("Goodbye")
-# #             break
-
-# #         reply = query_model(user_input)
-# #         print(f"Pet: {reply}")
-# #         speak(reply)
-
-# # if __name__ == "__main__":
-# #     main()
-
-
-
-# # OG VERSION BELOW
-# # def query_model(prompt: str):
-# #     """Send a prompt to the LLM running in Ollama and stream the response."""
-# #     url = f"{OLLAMA_HOST}/api/generate"
-# #     payload = {"model": MODEL_NAME, "prompt": prompt}
-
-# #     with requests.post(url, json=payload, stream=True) as response:
-# #         for line in response.iter_lines():
-# #             if line:
-# #                 try:
-# #                     data = json.loads(line.decode("utf-8"))
-# #                     if "response" in data:
-# #                         # Print without newline and flush so it appears instantly
-# #                         print(data["response"], end="", flush=True)
-# #                     if data.get("done", False):
-# #                         break
-# #                 except json.JSONDecodeError:
-# #                     continue
-# #     print()  # final newline at end of response
-
-# # def main():
-# #     print("🐶 Plushy Pet is ready! Type 'quit' to exit.")
-# #     while True:
-# #         user_input = input("\nYou: ")
-# #         if user_input.lower() in ["quit", "exit"]:
-# #             print("Goodbye 👋")
-# #             break
-# #         print("Pet: ", end="", flush=True)
-# #         query_model(user_input)
-
-# # if __name__ == "__main__":
-# #     main()
